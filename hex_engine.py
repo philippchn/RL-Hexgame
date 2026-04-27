@@ -1,343 +1,744 @@
-#This script uses some packages from the python standard library:
-#copy
-#random
-#pickle
-#Of the above only 'copy' is necessary for basic functionality
+# hex_engine.py
 
-class hexPosition (object):
+from copy import deepcopy
+from random import choice
+import math
+
+
+EMPTY = 0
+RED = 1      # Red connects left to right
+BLUE = -1    # Blue connects top to bottom
+
+
+class hexPosition:
     """
-    Objects of this class correspond to a game of Hex.
-    
-    Attributes
-    ----------
-    size : int 
-        The size of the board. The board is 'size*size'.
-    board : list[list[int]]
-        An array representing the hex board. '0' means empty. '1' means 'white'. '-1' means 'black'.
-    player : int
-        The player who is currently required to make a move. '1' means 'white'. '-1' means 'black'.
-    winner : int
-        Whether the game is won and by whom. '0' means 'no winner'. '1' means 'white' has won. '-1' means 'black' has won.
-    history : list[list[list[int]]]
-        A list of board-state arrays. Stores the history of play.    
+    Hex game engine.
+
+    Board encoding:
+        0  = empty
+        1  = red
+        -1 = blue
+
+    Red connects left to right.
+    Blue connects top to bottom.
+
+    This class keeps the original public API:
+        game = hexPosition()
+        game.move((row, col))
+        game.machine_vs_machine(machine1, machine2)
+
+    Agents must have the signature:
+        agent(board, action_set) -> move
     """
-    def __init__ (self, size=7):
-        #enforce lower and upper bound on size
-        size = max(2,min(size,26))
-        #attributes encoding a game state
-        self.size = max(2,min(size,26))
-        board = [[0 for x in range(size)] for y in range(size)]
-        self.board = board
-        self.player = 1
-        self.winner = 0
-        #attributes storing the history
-        self.history = [board]
-    def reset (self):
+
+    def __init__(self, size=7):
+        # Keep original size bounds.
+        size = max(2, min(size, 26))
+
+        self.size = size
+        self.board = [[EMPTY for _ in range(size)] for _ in range(size)]
+
+        self.player = RED
+        self.winner = EMPTY
+
+        self.history = [self.board]
+
+    def reset(self):
         """
-        This method resets the hex board. All stones are removed from the board and the history is cleared.
+        Reset the board.
+
         """
-        self.board = [[0 for x in range(self.size)] for y in range(self.size)]
-        self.player = 1
-        self.winner = 0
+        self.board = [[EMPTY for _ in range(self.size)] for _ in range(self.size)]
+        self.player = RED
+        self.winner = EMPTY
         self.history = []
-    def move (self, coordinates):
+
+    def move(self, coordinates):
         """
-        This method enacts a move.
-        The variable 'coordinates' is a tuple of board coordinates.
-        The variable 'player_num' is either 1 (white) or -1 (black).
+        Enact one move.
+
+        This keeps the following move order:
+            1. place current player's stone
+            2. switch active player
+            3. evaluate board
+            4. append board to history
         """
-        assert (self.winner == 0), "The game is already won."
-        assert (self.board[coordinates[0]][coordinates[1]] == 0), "These coordinates already contain a stone."
-        from copy import deepcopy
-        #make the move
-        self.board[coordinates[0]][coordinates[1]] = self.player
-        #change the active player
+        row, col = coordinates
+
+        assert self.winner == EMPTY, "The game is already won."
+        assert self.board[row][col] == EMPTY, "These coordinates already contain a stone."
+
+        self.board[row][col] = self.player
+
+        # Original behavior: switch player before evaluation.
         self.player *= -1
-        #evaluate the position
+
         self.evaluate()
-        #append to history
+
         self.history.append(deepcopy(self.board))
-    def print (self, invert_colors=True):
+
+    def print(self, invert_colors=True):
         """
-        This method prints a visualization of the hex board to the standard output.
-        If the standard output prints black text on a white background, one must set invert_colors=False.
+        Print the board in the terminal.
+
+        Red is represented by ●.
+        Blue is represented by ○.
         """
         names = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         indent = 0
-        headings = " "*5+(" "*3).join(names[:self.size])
+
+        headings = " " * 5 + (" " * 3).join(names[:self.size])
         print(headings)
-        tops = " "*5+(" "*3).join("_"*self.size)
+
+        tops = " " * 5 + (" " * 3).join("_" * self.size)
         print(tops)
-        roof = " "*4+"/ \\"+"_/ \\"*(self.size-1)
+
+        roof = " " * 4 + "/ \\" + "_/ \\" * (self.size - 1)
         print(roof)
-        #color mapping inverted by default for display in terminal.
+
         if invert_colors:
-            color_mapping = lambda i: " " if i==0 else ("\u25CB" if i== -1 else "\u25CF")
+            color_mapping = lambda value: (
+                " " if value == EMPTY else
+                "\u25CB" if value == BLUE else
+                "\u25CF"
+            )
         else:
-            color_mapping = lambda i: " " if i==0 else ("\u25CF" if i== -1 else "\u25CB")
-        for r in range(self.size):
-            row_mid = " "*indent
+            color_mapping = lambda value: (
+                " " if value == EMPTY else
+                "\u25CF" if value == BLUE else
+                "\u25CB"
+            )
+
+        for row in range(self.size):
+            row_mid = " " * indent
             row_mid += "   | "
-            row_mid += " | ".join(map(color_mapping,self.board[r]))
-            row_mid += " | {} ".format(r+1)
+            row_mid += " | ".join(map(color_mapping, self.board[row]))
+            row_mid += f" | {row + 1} "
             print(row_mid)
-            row_bottom = " "*indent
-            row_bottom += " "*3+" \\_/"*self.size
-            if r<self.size-1:
+
+            row_bottom = " " * indent
+            row_bottom += " " * 3 + " \\_/" * self.size
+
+            if row < self.size - 1:
                 row_bottom += " \\"
+
             print(row_bottom)
             indent += 2
-        headings = " "*(indent-2)+headings
+
+        headings = " " * (indent - 2) + headings
         print(headings)
-    def _get_adjacent (self, coordinates):
+
+    def _get_adjacent(self, coordinates):
         """
-        Helper function to obtain adjacent cells in the board array.
-        Used in position evaluation to construct paths through the board.
+        Return adjacent hex cells.
+
         """
-        u = (coordinates[0]-1, coordinates[1])
-        d = (coordinates[0]+1, coordinates[1])
-        r = (coordinates[0], coordinates[1]-1)
-        l = (coordinates[0], coordinates[1]+1)
-        ur = (coordinates[0]-1, coordinates[1]+1)
-        dl = (coordinates[0]+1, coordinates[1]-1)
-        return [pair for pair in [u,d,r,l,ur,dl] if max(pair[0], pair[1]) <= self.size-1 and min(pair[0], pair[1]) >= 0]
-    def get_action_space (self, recode_black_as_white=False):
+        row, col = coordinates
+
+        up = (row - 1, col)
+        down = (row + 1, col)
+        right = (row, col - 1)
+        left = (row, col + 1)
+        up_right = (row - 1, col + 1)
+        down_left = (row + 1, col - 1)
+
+        candidates = [up, down, right, left, up_right, down_left]
+
+        return [
+            pair
+            for pair in candidates
+            if max(pair[0], pair[1]) <= self.size - 1
+            and min(pair[0], pair[1]) >= 0
+        ]
+
+    def get_action_space(self, recode_blue_as_red=False, recode_black_as_white=False):
         """
-        This method returns a list of array positions which are empty (on which stones may be put).
+        Return all empty cells.
+
+        
         """
         actions = []
-        for i in range(self.size):
-            for j in range(self.size):
-                if self.board[i][j] == 0:
-                    actions.append((i,j))
-        if recode_black_as_white:
+
+        for row in range(self.size):
+            for col in range(self.size):
+                if self.board[row][col] == EMPTY:
+                    actions.append((row, col))
+
+        if recode_blue_as_red or recode_black_as_white:
             return [self.recode_coordinates(action) for action in actions]
-        else:
-            return(actions)
-    def _random_move (self):
-        """
-        This method enacts a uniformly randomized valid move.
-        """
-        from random import choice
+
+        return actions
+
+    def _random_move(self):
+        """Play one uniformly random valid move."""
         chosen = choice(self.get_action_space())
         self.move(chosen)
-    def _random_match (self):
-        """
-        This method randomizes an entire playthrough. Mostly useful to test code functionality.
-        """
-        while self.winner == 0:
+
+    def _random_match(self):
+        """Play a full random game."""
+        while self.winner == EMPTY:
             self._random_move()
-    def _prolong_path (self, path):
+
+    def _prolong_path(self, path):
         """
-        A helper function used for board evaluation.
+        Extend a path through stones of the same color.
+
         """
         player = self.board[path[-1][0]][path[-1][1]]
         candidates = self._get_adjacent(path[-1])
-        #preclude loops
-        candidates = [cand for cand in candidates if cand not in path]
-        candidates = [cand for cand in candidates if self.board[cand[0]][cand[1]] == player]
-        return [path+[cand] for cand in candidates]
-    def evaluate (self, verbose=False):
+
+        # Prevent loops.
+        candidates = [candidate for candidate in candidates if candidate not in path]
+
+        # Only continue through stones of the same player.
+        candidates = [
+            candidate
+            for candidate in candidates
+            if self.board[candidate[0]][candidate[1]] == player
+        ]
+
+        return [path + [candidate] for candidate in candidates]
+
+    def evaluate(self, verbose=False):
         """
-        Evaluates the board position and adjusts the 'winner' attribute of the object accordingly.
+        Evaluate whether red or blue has won.
+
+        Order:
+            first evaluate red,
+            then evaluate blue.
         """
-        self._evaluate_white(verbose=verbose)
-        self._evaluate_black(verbose=verbose)  
-    def _evaluate_white (self, verbose):
+        self._evaluate_red(verbose=verbose)
+        self._evaluate_blue(verbose=verbose)
+
+    def _evaluate_red(self, verbose=False):
         """
-        Evaluate whether the board position is a win for player '1'. Uses breadth first search.
-        If verbose=True a winning path will be printed to the standard output (if one exists).
-        This method may be time-consuming for huge board sizes.
-        """
-        paths = []
-        visited = []
-        for i in range(self.size):
-            if self.board[i][0] == 1:
-                paths.append([(i,0)])
-                visited.append([(i,0)])
-        while True:
-            if len(paths) == 0:
-                return False
-            for path in paths:
-                prolongations = self._prolong_path(path)
-                paths.remove(path)
-                for new in prolongations:
-                    if new[-1][1] == self.size-1:
-                        if verbose:
-                            print("A winning path for 'white' ('1'):\n",new)
-                        self.winner = 1
-                        return True
-                    if new[-1] not in visited:
-                        paths.append(new)
-                        visited.append(new[-1])
-    def _evaluate_black (self, verbose):
-        """
-        Evaluate whether the board position is a win for player '-1'. Uses breadth first search.
-        If verbose=True a winning path will be printed to the standard output (if one exists).
-        This method may be time-consuming for huge board sizes.
+        Check whether red has connected left to right.
+
         """
         paths = []
         visited = []
-        for i in range(self.size):
-            if self.board[0][i] == -1:
-                paths.append([(0,i)])
-                visited.append([(0,i)])
+
+        for row in range(self.size):
+            if self.board[row][0] == RED:
+                paths.append([(row, 0)])
+                visited.append([(row, 0)])
+
         while True:
             if len(paths) == 0:
                 return False
+
             for path in paths:
                 prolongations = self._prolong_path(path)
                 paths.remove(path)
-                for new in prolongations:
-                    if new[-1][0] == self.size-1:
+
+                for new_path in prolongations:
+                    if new_path[-1][1] == self.size - 1:
                         if verbose:
-                            print("A winning path for 'black' ('-1'):\n",new)
-                        self.winner = -1
+                            print("A winning path for red ('1'):\n", new_path)
+
+                        self.winner = RED
                         return True
-                    if new[-1] not in visited:
-                        paths.append(new)
-                        visited.append(new[-1])
-    def human_vs_machine (self, human_player=1, machine=None):
+
+                    if new_path[-1] not in visited:
+                        paths.append(new_path)
+                        visited.append(new_path[-1])
+
+    def _evaluate_blue(self, verbose=False):
         """
-        Play a game against an AI. The variable machine must point to a function that maps a board state and an action set to an element of the action set.
-        If machine is not specified random actions will be used.
-        This method should not be used for training an algorithm.
+        Check whether blue has connected top to bottom.
+
         """
-        #default to random player if 'machine' not given
-        if machine == None:
-            def machine (board, action_set):
-                from random import choice
-                return choice(action_set)
-        def translator (string):
-            #This function translates human terminal input into the proper array indices.
-            number_translated = 27
-            letter_translated = 27
-            names = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-            if len(string) > 0:
-                letter = string[0]
-            if len(string) > 1:
-                number1 = string[1]
-            if len(string) > 2:
-                number2 = string[2]
-            for i in range(26):
-                if names[i] == letter:
-                    letter_translated = i
-                    break
-            if len(string) > 2:
-                for i in range(10,27):
-                    if number1 + number2 == "{}".format(i):
-                        number_translated = i-1
-            else:
-                for i in range(1,10):
-                    if number1 == "{}".format(i):
-                        number_translated = i-1
-            return (number_translated, letter_translated)
-        #the match
-        self.reset()
-        while self.winner == 0:
-            self.print()
-            possible_actions = self.get_action_space()
-            if self.player == human_player:
-                while True:
-                    human_input = translator(input("Enter your move (e.g. 'A1'): "))
-                    if human_input in possible_actions:
-                        break
-                self.move(human_input)
-            else:
-                chosen = machine(self.board, possible_actions)
-                self.move(chosen)
-            if self.winner == 1:
-                self.print()
-                self._evaluate_white(verbose=True)
-            if self.winner == -1:
-                self.print()
-                self._evaluate_black(verbose=True)
-    def recode_black_as_white (self, print=False, invert_colors=True):
+        paths = []
+        visited = []
+
+        for col in range(self.size):
+            if self.board[0][col] == BLUE:
+                paths.append([(0, col)])
+                visited.append([(0, col)])
+
+        while True:
+            if len(paths) == 0:
+                return False
+
+            for path in paths:
+                prolongations = self._prolong_path(path)
+                paths.remove(path)
+
+                for new_path in prolongations:
+                    if new_path[-1][0] == self.size - 1:
+                        if verbose:
+                            print("A winning path for blue ('-1'):\n", new_path)
+
+                        self.winner = BLUE
+                        return True
+
+                    if new_path[-1] not in visited:
+                        paths.append(new_path)
+                        visited.append(new_path[-1])
+
+    def machine_vs_machine(self, machine1=None, machine2=None):
         """
-        Returns a board where black is recoded as white and wants to connect horizontally.
-        This corresponds to flipping the board along the south-west to north-east diagonal and swapping colors.
-        This may be used to train AI players in a 'color-blind' way.
+        Let two agents play.
+
+        machine1 plays red.
+        machine2 plays blue.
+
+        If one machine is None, it plays randomly.
         """
-        flipped_board = [[0 for i in range(self.size)] for j in range(self.size)]
-        #flipping and color change
-        for i in range(self.size):
-            for j in range(self.size):
-                if self.board[self.size-1-j][self.size-1-i] == 1:
-                    flipped_board[i][j] = -1
-                if self.board[self.size-1-j][self.size-1-i] == -1:
-                    flipped_board[i][j] = 1
-        return flipped_board
-    def recode_coordinates (self, coordinates):
-        """
-        Transforms a coordinate tuple (with respect to the board) analogously to the method recode_black_as_white.
-        """
-        assert(0 <= coordinates[0] and self.size-1 >= coordinates[0]), "There is something wrong with the first coordinate."
-        assert(0 <= coordinates[1] and self.size-1 >= coordinates[1]), "There is something wrong with the second coordinate."
-        return (self.size-1-coordinates[1], self.size-1-coordinates[0])
-    def coordinate_to_scalar (self, coordinates):
-        """
-        Helper function to convert coordinates to scalars.
-        This may be used as alternative coding for the action space.
-        """
-        assert(0 <= coordinates[0] and self.size-1 >= coordinates[0]), "There is something wrong with the first coordinate."
-        assert(0 <= coordinates[1] and self.size-1 >= coordinates[1]), "There is something wrong with the second coordinate."
-        return coordinates[0]*self.size + coordinates[1]
-    def scalar_to_coordinates (self, scalar):
-        """
-        Helper function to transform a scalar "back" to coordinates.
-        Reverses the output of 'coordinate_to_scalar'.
-        """
-        coord1 = int(scalar/self.size)
-        coord2 = scalar - coord1 * self.size
-        assert(0 <= coord1 and self.size-1 >= coord1), "The scalar input is invalid."
-        assert(0 <= coord2 and self.size-1 >= coord2), "The scalar input is invalid."
-        return (coord1, coord2)
-    def machine_vs_machine (self, machine1=None, machine2=None):
-        """
-        Let two AIs play a game against each other.
-        The variables machine1 and machine2 must point to a function that maps a board state and an action set to an element of the action set.
-        If a machine is not specified random actions will be used.
-        This method should not be used for training an algorithm.
-        """
-        #use random players as default if machines not specified
-        if machine1 == None:
-            def machine1 (board, action_list):
-                from random import choice
+        if machine1 is None:
+            def machine1(board, action_list):
                 return choice(action_list)
-        if machine2 == None:
-            def machine2 (board, action_list):
-                from random import choice
+
+        if machine2 is None:
+            def machine2(board, action_list):
                 return choice(action_list)
-        #the match
+
         self.reset()
-        while self.winner == 0:
-            self.print()
-            input("Press ENTER to continue.")
-            if self.player == 1:
+
+        while self.winner == EMPTY:
+            if self.player == RED:
                 chosen = machine1(self.board, self.get_action_space())
-            if self.player == -1:
+
+            if self.player == BLUE:
                 chosen = machine2(self.board, self.get_action_space())
+
+            # Safer for external agents.
+            if chosen not in self.get_action_space():
+                chosen = choice(self.get_action_space())
+
             self.move(chosen)
-            if self.winner == 1:
-                self.print()
-                self._evaluate_white(verbose=True)
-            if self.winner == -1:
-                self.print()
-                self._evaluate_black(verbose=True)
-    def replay_history (self):
+
+            if self.winner == RED:
+                self._evaluate_red(verbose=False)
+
+            if self.winner == BLUE:
+                self._evaluate_blue(verbose=False)
+
+        return self.winner
+
+    def recode_blue_as_red(self, print=False, invert_colors=True):
         """
-        Print the game history to standard output.
+        Return a board where blue is recoded as red.
+
+        This corresponds to flipping the board along the south-west
+        to north-east diagonal and swapping colors.
         """
+        flipped_board = [[EMPTY for _ in range(self.size)] for _ in range(self.size)]
+
+        for row in range(self.size):
+            for col in range(self.size):
+                original_value = self.board[self.size - 1 - col][self.size - 1 - row]
+
+                if original_value == RED:
+                    flipped_board[row][col] = BLUE
+
+                if original_value == BLUE:
+                    flipped_board[row][col] = RED
+
+        return flipped_board
+
+    # Compatibility alias with the original code.
+    def recode_black_as_white(self, print=False, invert_colors=True):
+        return self.recode_blue_as_red(print=print, invert_colors=invert_colors)
+
+    def recode_coordinates(self, coordinates):
+        """Transform coordinates according to recode_blue_as_red."""
+        row, col = coordinates
+
+        assert 0 <= row <= self.size - 1, "There is something wrong with the first coordinate."
+        assert 0 <= col <= self.size - 1, "There is something wrong with the second coordinate."
+
+        return self.size - 1 - col, self.size - 1 - row
+
+    def coordinate_to_scalar(self, coordinates):
+        """Convert coordinates to a scalar action."""
+        row, col = coordinates
+
+        assert 0 <= row <= self.size - 1, "There is something wrong with the first coordinate."
+        assert 0 <= col <= self.size - 1, "There is something wrong with the second coordinate."
+
+        return row * self.size + col
+
+    def scalar_to_coordinates(self, scalar):
+        """Convert a scalar action back to board coordinates."""
+        row = int(scalar / self.size)
+        col = scalar - row * self.size
+
+        assert 0 <= row <= self.size - 1, "The scalar input is invalid."
+        assert 0 <= col <= self.size - 1, "The scalar input is invalid."
+
+        return row, col
+
+    def replay_history(self):
+        """Print the game history."""
         for board in self.history:
             temp = hexPosition(size=self.size)
             temp.board = board
             temp.print()
             input("Press ENTER to continue.")
-    def save (self, path):
-        """
-        Serializes the object as a bytestream.
-        """
+
+    def save(self, path):
+        """Serialize the game object."""
         import pickle
-        file = open(path, 'ab')
-        pickle.dump(self, file)                     
-        file.close()
+
+        with open(path, "ab") as file:
+            pickle.dump(self, file)
+
+
+class HexPygameApp:
+    """
+    Pygame interface for Hex.
+
+    Direction:
+        RED  connects LEFT ↔ RIGHT
+        BLUE connects TOP ↕ BOTTOM
+    """
+
+    WIDTH = 1000
+    HEIGHT = 700
+    FPS = 60
+
+    HEX_RADIUS = 32
+    HEX_WIDTH = math.sqrt(3) * HEX_RADIUS
+    HEX_VERTICAL_STEP = 1.5 * HEX_RADIUS
+
+    BOARD_TOP = 95
+    BOARD_LEFT = 145
+
+    AGENT_DELAY_MS = 250
+
+    COLORS = {
+        "background": (245, 245, 245),
+        "cell": (220, 220, 220),
+        "hover": (255, 245, 170),
+        "grid": (25, 25, 25),
+        "red": (245, 20, 20),
+        "blue": (0, 120, 255),
+        "text": (30, 30, 30),
+        "white_text": (255, 255, 255),
+    }
+
+    def __init__(self, size=7, red_agent=None, blue_agent=None, games_to_play=1):
+        import pygame
+
+        self.pygame = pygame
+        self.game = hexPosition(size)
+
+        self.red_agent = red_agent
+        self.blue_agent = blue_agent
+
+        self.games_to_play = games_to_play
+        self.current_game_number = 1
+
+        self.last_agent_move_time = 0
+        self.waiting_after_game = False
+        self.game_over_time = None
+
+        pygame.init()
+        self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
+        pygame.display.set_caption("Hex Game")
+
+        self.clock = pygame.time.Clock()
+        self.font = pygame.font.SysFont("arial", 24, bold=True)
+        self.small_font = pygame.font.SysFont("arial", 18, bold=True)
+
+        self.hex_centers = self._calculate_hex_centers()
+
+    def _calculate_hex_centers(self):
+        """
+
+        Each next column moves right by HEX_WIDTH.
+        Each next row moves down by 1.5 * radius.
+        Each row is shifted right by half a hex width.
+        """
+        centers = {}
+
+        for row in range(self.game.size):
+            for col in range(self.game.size):
+                x = (
+                    self.BOARD_LEFT
+                    + col * self.HEX_WIDTH
+                    + row * self.HEX_WIDTH / 2
+                )
+                y = self.BOARD_TOP + row * self.HEX_VERTICAL_STEP
+                centers[(row, col)] = (x, y)
+
+        return centers
+
+    def _hex_corners(self, center):
+        """
+        Return corners for a flat-top hexagon.
+        """
+        x, y = center
+        corners = []
+
+        for i in range(6):
+            angle = math.radians(60 * i + 30)
+            px = x + self.HEX_RADIUS * math.cos(angle)
+            py = y + self.HEX_RADIUS * math.sin(angle)
+            corners.append((px, py))
+
+        return corners
+
+    def _current_agent(self):
+        if self.game.player == RED:
+            return self.red_agent
+        if self.game.player == BLUE:
+            return self.blue_agent
+        return None
+
+    def _agent_step(self):
+        if self.game.winner != EMPTY:
+            return
+
+        agent = self._current_agent()
+        if agent is None:
+            return
+
+        now = self.pygame.time.get_ticks()
+
+        if now - self.last_agent_move_time < self.AGENT_DELAY_MS:
+            return
+
+        actions = self.game.get_action_space()
+        move = agent(self.game.board, actions)
+
+        if move not in actions:
+            move = choice(actions)
+
+        self.game.move(move)
+        self.last_agent_move_time = now
+
+    def run(self):
+        pygame = self.pygame
+        running = True
+
+        while running:
+            self.clock.tick(self.FPS)
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        running = False
+                    elif event.key == pygame.K_r:
+                        self._start_new_series()
+                    elif event.key == pygame.K_n:
+                        self._start_next_game()
+
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if (
+                        event.button == 1
+                        and self._current_agent() is None
+                        and self.game.winner == EMPTY
+                    ):
+                        self._handle_click(event.pos)
+
+            self._agent_step()
+            self._handle_game_over_wait()
+            self._draw()
+
+        pygame.quit()
+
+    def _handle_game_over_wait(self):
+        """Keep the final board visible before moving to the next game."""
+        if self.game.winner == EMPTY:
+            return
+
+        if not self.waiting_after_game:
+            self.waiting_after_game = True
+            self.game_over_time = self.pygame.time.get_ticks()
+            return
+
+        if self.current_game_number >= self.games_to_play:
+            return
+
+        elapsed = self.pygame.time.get_ticks() - self.game_over_time
+
+        if elapsed >= 2000:
+            self._start_next_game()
+
+    def _start_new_series(self):
+        self.current_game_number = 1
+        self.game.reset()
+        self.waiting_after_game = False
+        self.game_over_time = None
+        self.last_agent_move_time = 0
+
+    def _start_next_game(self):
+        if self.current_game_number < self.games_to_play:
+            self.current_game_number += 1
+
+        self.game.reset()
+        self.waiting_after_game = False
+        self.game_over_time = None
+        self.last_agent_move_time = 0
+
+    def _handle_click(self, position):
+        cell = self._mouse_to_cell(position)
+
+        if cell is not None:
+            self.game.move(cell)
+
+    def _mouse_to_cell(self, position):
+        mouse_x, mouse_y = position
+
+        closest_cell = None
+        closest_distance = float("inf")
+
+        for cell, center in self.hex_centers.items():
+            x, y = center
+            distance = math.hypot(mouse_x - x, mouse_y - y)
+
+            if distance < closest_distance:
+                closest_distance = distance
+                closest_cell = cell
+
+        if closest_distance <= self.HEX_RADIUS:
+            return closest_cell
+
+        return None
+
+    def _draw(self):
+        pygame = self.pygame
+        self.screen.fill(self.COLORS["background"])
+
+        self._draw_goal_edges()
+        self._draw_direction_labels()
+        self._draw_board()
+        self._draw_status_text()
+
+        pygame.display.flip()
+
+    def _draw_board(self):
+        for row in range(self.game.size):
+            for col in range(self.game.size):
+                self._draw_cell(row, col)
+
+    def _draw_goal_edges(self):
+        """
+        Draw colored goal sides.
+
+        RED goal sides:
+            left and right board sides
+
+        BLUE goal sides:
+            top and bottom board sides
+        """
+        pygame = self.pygame
+        size = self.game.size
+
+        top_left = self.hex_centers[(0, 0)]
+        top_right = self.hex_centers[(0, size - 1)]
+        bottom_left = self.hex_centers[(size - 1, 0)]
+        bottom_right = self.hex_centers[(size - 1, size - 1)]
+
+        pygame.draw.line(
+            self.screen,
+            self.COLORS["blue"],
+            top_left,
+            top_right,
+            18,
+        )
+
+        pygame.draw.line(
+            self.screen,
+            self.COLORS["blue"],
+            bottom_left,
+            bottom_right,
+            18,
+        )
+
+        pygame.draw.line(
+            self.screen,
+            self.COLORS["red"],
+            top_left,
+            bottom_left,
+            18,
+        )
+
+        pygame.draw.line(
+            self.screen,
+            self.COLORS["red"],
+            top_right,
+            bottom_right,
+            18,
+        )
+
+    def _draw_direction_labels(self):
+        """
+        Direction comments shown on the interface.
+        """
+        red_text = "RED: connect LEFT ↔ RIGHT"
+        blue_text = "BLUE: connect TOP ↕ BOTTOM"
+
+        red_surface = self.small_font.render(red_text, True, self.COLORS["red"])
+        blue_surface = self.small_font.render(blue_text, True, self.COLORS["blue"])
+
+        self.screen.blit(red_surface, (30, 20))
+        self.screen.blit(blue_surface, (30, 45))
+
+    def _draw_status_text(self):
+        if self.game.winner == RED:
+            status = "RED wins! Final board shown. Press N for next game or R to restart."
+        elif self.game.winner == BLUE:
+            status = "BLUE wins! Final board shown. Press N for next game or R to restart."
+        else:
+            current = "RED" if self.game.player == RED else "BLUE"
+            status = f"{current}'s turn"
+
+        game_counter = f"Game {self.current_game_number} / {self.games_to_play}"
+        help_text = "R: restart series | N: next game | Esc: quit"
+
+        self.screen.blit(
+            self.font.render(status, True, self.COLORS["text"]),
+            (30, self.HEIGHT - 85),
+        )
+        self.screen.blit(
+            self.small_font.render(game_counter, True, self.COLORS["text"]),
+            (30, self.HEIGHT - 55),
+        )
+        self.screen.blit(
+            self.small_font.render(help_text, True, self.COLORS["text"]),
+            (30, self.HEIGHT - 30),
+        )
+
+    def _draw_cell(self, row, col):
+        pygame = self.pygame
+
+        center = self.hex_centers[(row, col)]
+        x, y = center
+        corners = self._hex_corners(center)
+
+        fill = self.COLORS["cell"]
+
+        if (
+            self._mouse_to_cell(pygame.mouse.get_pos()) == (row, col)
+            and self.game.board[row][col] == EMPTY
+            and self.game.winner == EMPTY
+            and self._current_agent() is None
+        ):
+            fill = self.COLORS["hover"]
+
+        pygame.draw.polygon(self.screen, fill, corners)
+        pygame.draw.polygon(self.screen, self.COLORS["grid"], corners, 2)
+
+        value = self.game.board[row][col]
+
+        if value == RED:
+            pygame.draw.circle(
+                self.screen,
+                self.COLORS["red"],
+                (int(x), int(y)),
+                int(self.HEX_RADIUS * 0.68),
+            )
+
+        elif value == BLUE:
+            pygame.draw.circle(
+                self.screen,
+                self.COLORS["blue"],
+                (int(x), int(y)),
+                int(self.HEX_RADIUS * 0.68),
+            )
