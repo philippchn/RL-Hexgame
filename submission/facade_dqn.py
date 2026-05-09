@@ -21,6 +21,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import hex_engine as engine
+from .greedy_agent import greedy_agent
+
 
 EMPTY = 0
 RED   = 1
@@ -144,13 +146,25 @@ def _pick_action(net: HexDQN, s_t: torch.Tensor,
 # ── evaluation ───────────────────────────────────────────────────────────────
 
 def _eval_win_rate(net: HexDQN, size: int,
-                   n_games: int = 30, device: "torch.device | None" = None) -> float:
+                   n_games: int = 30,
+                   opponent: str = "random",        # ← new parameter
+                   device: "torch.device | None" = None) -> float:
     """
-    Play *n_games* greedy games against a random opponent, alternating colors.
-    Returns win fraction (0–1). Does not affect training state.
+    opponent = "random"  → plays against a random agent (original behaviour)
+    opponent = "greedy"  → plays against greedy_agent
     """
     if device is None:
         device = _get_device()
+
+    # resolve the opponent function
+    if opponent == "random":
+        def opp_fn(board, actions):
+            return random.choice(actions)
+    elif opponent == "greedy":
+        opp_fn = greedy_agent
+    else:
+        raise ValueError(f"Unknown opponent: {opponent!r}")
+
     net.eval()
     wins = 0
     for i in range(n_games):
@@ -166,12 +180,12 @@ def _eval_win_rate(net: HexDQN, size: int,
                 real  = _persp_action(game, game.scalar_to_coordinates(a_idx))
                 game.move(real)
             else:
-                game.move(random.choice(game.get_action_space()))
+                move = opp_fn(game.board, game.get_action_space())
+                game.move(move)
         if game.winner == q_color:
             wins += 1
     net.train()
     return wins / n_games
-
 
 # ── persistence ───────────────────────────────────────────────────────────────
 
@@ -189,6 +203,8 @@ def load(size: int) -> bool:
     """Load model for *size* into _network. Returns True if file found."""
     global _network, _trained_size
     path = _model_path(size)
+    print(f"[DQN] Looking for: {path}")
+    print(f"[DQN] Exists: {os.path.exists(path)}")
     if not os.path.exists(path):
         return False
     device = _get_device()
@@ -319,14 +335,20 @@ def train(size: int = 7, episodes: int = NUM_EPISODES) -> dict:
 
         # ── periodic evaluation ───────────────────────────────────────────────
         if (ep + 1) % EVAL_EVERY == 0:
-            win_rate = _eval_win_rate(net, size, n_games=30, device=device)
-            win_history.append((ep + 1, win_rate))
+            wr_random = _eval_win_rate(net, size, n_games=30, opponent="random", device=device)
+            wr_greedy = _eval_win_rate(net, size, n_games=30, opponent="greedy", device=device)
+
+            win_history.append((ep + 1, wr_random, wr_greedy))
             recent = losses[-(EVAL_EVERY):] if losses else [0.0]
             avg_loss = sum(recent) / len(recent)
             pct = (ep + 1) / episodes * 100
-            bar = "█" * int(win_rate * 20) + "░" * (20 - int(win_rate * 20))
-            print(f"{ep+1:>8,}  {epsilon:>6.3f}  {avg_loss:>8.4f}  "
-                  f"{win_rate*100:>5.1f}%  {bar}  ({pct:.0f}%)")
+
+            bar_r = "█" * int(wr_random * 20) + "░" * (20 - int(wr_random * 20))
+            bar_g = "█" * int(wr_greedy * 20) + "░" * (20 - int(wr_greedy * 20))
+
+            print(f"{ep + 1:>8,}  {epsilon:>6.3f}  {avg_loss:>8.4f}  "
+                  f"rand={wr_random * 100:>4.1f}% {bar_r}  "
+                  f"greedy={wr_greedy * 100:>4.1f}% {bar_g}  ({pct:.0f}%)")
 
     net.eval()
     _network      = net
@@ -379,18 +401,24 @@ def plot_metrics(metrics: dict, smoothing: int = 200) -> None:
     ax1.grid(alpha=0.3)
 
     # ── win rate ──────────────────────────────────────────────────────────────
+    # replace this section inside plot_metrics:
     if win_rates:
-        eps, wrs = zip(*win_rates)
-        ax2.plot(eps, [w * 100 for w in wrs],
-                 marker="o", color="darkorange", linewidth=2)
-        ax2.axhline(50, color="gray", linestyle="--", linewidth=1,
-                    label="random baseline (50 %)")
-        ax2.fill_between(eps, 50, [w * 100 for w in wrs],
-                         where=[w >= 0.5 for w in wrs],
-                         alpha=0.15, color="green", label="beating random")
-        ax2.fill_between(eps, 50, [w * 100 for w in wrs],
-                         where=[w < 0.5 for w in wrs],
-                         alpha=0.15, color="red",   label="below random")
+        # handle both old (2-tuple) and new (3-tuple) format
+        if len(win_rates[0]) == 3:
+            eps, wrs_rand, wrs_greedy = zip(*win_rates)
+        else:
+            eps, wrs_rand = zip(*win_rates)
+            wrs_greedy = None
+
+        ax2.plot(eps, [w * 100 for w in wrs_rand],
+                 marker="o", color="darkorange", linewidth=2, label="vs random")
+
+        if wrs_greedy:
+            ax2.plot(eps, [w * 100 for w in wrs_greedy],
+                     marker="s", color="steelblue", linewidth=2, label="vs greedy")
+
+        ax2.axhline(50, color="gray", linestyle="--", linewidth=1, label="50% line")
+        ax2.axhline(75, color="green", linestyle=":", linewidth=1, label="~greedy ceiling est.")
         ax2.set_ylim(0, 105)
         ax2.legend()
     ax2.set_xlabel("Episode")
@@ -416,8 +444,8 @@ def _build_game(board) -> engine.hexPosition:
 
 def agent(board, action_set):
     global _network, _trained_size
-
     size = len(board)
+    print(f"[DQN] agent() called, size={size}, _network loaded={_network is not None}")
     if _network is None or _trained_size != size:
         if not load(size):
             train(size=size)
