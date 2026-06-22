@@ -36,15 +36,16 @@ def parse_args():
 
     # AlphaZero
     p.add_argument("--iterations",   type=int, default=200, help="[AZ/PPO] training iterations")
-    p.add_argument("--sims",         type=int, default=50,  help="[AZ] MCTS sims per move")
+    p.add_argument("--sims",         type=int, default=None,
+                   help="[AZ] MCTS sims per move (default: auto, scales with board size)")
     p.add_argument("--parallel",     type=int, default=8,
                    help="[AZ] parallel MCTS leaves per batch (must be <= sims/7 or tree search collapses)")
     p.add_argument("--resume-from",  type=int, default=0,
                    help="[AZ] resume from checkpoint at this iteration (e.g. 60 → loads alphazero_NxN_ckpt0060.pt)")
-    p.add_argument("--channels",     type=int, default=128,
-                   help="[AZ] residual feature channels (128 for ≤9×9, 256 for ≥11×11)")
-    p.add_argument("--blocks",       type=int, default=5,
-                   help="[AZ] residual blocks (5 for ≤9×9, 8 for ≥11×11)")
+    p.add_argument("--channels",     type=int, default=None,
+                   help="[AZ] residual feature channels (default: auto — 128 for ≤9×9, 256 for ≥11×11)")
+    p.add_argument("--blocks",       type=int, default=None,
+                   help="[AZ] residual blocks (default: auto — 5 for ≤9×9, 8 for ≥11×11)")
     p.add_argument("--workers",      type=int, default=1,
                    help="[AZ] parallel CPU self-play workers (default 1; try cpu_count-1)")
 
@@ -150,7 +151,8 @@ def main():
     print(f"Method : {args.method}")
     print(f"Board  : {args.size}×{args.size}")
     if args.method == "alphazero":
-        print(f"Iters  : {args.iterations}  sims/move={args.sims}  parallel={args.parallel}")
+        sims_str = args.sims if args.sims is not None else "auto (size-based)"
+        print(f"Iters  : {args.iterations}  sims/move={sims_str}  parallel={args.parallel}")
     elif args.method == "dqn_sb3":
         print(f"Steps  : {args.timesteps:,}  opponent={args.opponent}")
     elif args.method in ("ppo",):

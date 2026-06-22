@@ -88,8 +88,8 @@ RED   = 1
 BLUE  = -1
 
 # ── hyperparameters ───────────────────────────────────────────────────────────
-N_SIMULATIONS  = 100     # MCTS simulations per move during self-play
-INFERENCE_SIMS = 200     # sims per move at inference (agent vs human) — no retraining needed
+N_SIMULATIONS  = 100     # baseline self-play sims; train() auto-scales by board size (_scaled_sims)
+INFERENCE_SIMS = 200     # baseline inference sims; agent() auto-scales by board size (_scaled_inference_sims)
 PARALLEL_SIMS  = 8       # leaves per batched GPU forward pass — must be << N_SIMULATIONS
                          # Rule: parallel ≤ sims/7  (otherwise tree search is only 1 level deep)
 C_PUCT         = 1.5     # exploration constant in PUCT formula
@@ -114,6 +114,44 @@ EVAL_EVERY     = 20      # evaluate against random every N iterations
 # Network size — override via train(channels=..., blocks=...)
 NET_CHANNELS = 128       # residual feature channels
 NET_BLOCKS   = 5         # number of residual blocks
+
+
+# ── automatic size-based scaling ──────────────────────────────────────────────
+# Larger boards have a larger branching factor: the root has size² children.
+# MCTS must visit each child several times for the visit-count policy target π
+# to carry real signal — otherwise most children get 0–1 visits and π is just
+# noise, the self-improvement loop never bootstraps, and the agent plays
+# randomly. So the simulation budget (and self-play data volume) must grow with
+# the board. These helpers derive sane defaults from the board size so callers
+# don't have to remember to tune them per board.
+
+def _scaled_sims(size: int) -> int:
+    """MCTS sims per move during self-play: ≈3.5 visits per root child, rounded
+    to a multiple of 50 and floored at 100.
+        7→150  9→300  11→400  13→600  15→800  17→1000"""
+    return max(100, int(round(3.5 * size * size / 50.0)) * 50)
+
+def _scaled_inference_sims(size: int) -> int:
+    """Sims per move at play time — twice the self-play budget so the agent
+    thinks harder against an opponent than it did while training."""
+    return 2 * _scaled_sims(size)
+
+def _scaled_games_per_iter(size: int) -> int:
+    """Self-play games per training iteration. Larger boards get a few more for
+    data diversity, balanced against their higher per-game cost.
+        ≤9→16  ≤13→24  else→32"""
+    if size <= 9:
+        return GAMES_PER_ITER
+    return 24 if size <= 13 else 32
+
+def _scaled_net(size: int) -> "tuple[int, int]":
+    """(channels, blocks) for the board. Boards ≥11 use a wider, deeper net:
+    256ch/8blocks (8 residual blocks give a receptive field spanning up to
+    17×17 — needed so the value head can reason about full-board connectivity).
+    Smaller boards use the 128ch/5blocks defaults."""
+    if size >= 11:
+        return 256, 8
+    return NET_CHANNELS, NET_BLOCKS
 
 # ── recent improvements ───────────────────────────────────────────────────────
 # 1. Symmetry augmentation. Hex on a rhombus has one non-trivial symmetry: 180°
@@ -922,14 +960,23 @@ def _model_path(size: int) -> str:
 def _checkpoint_path(size: int, iteration: int) -> str:
     return os.path.join(os.path.dirname(__file__), f"alphazero_{size}x{size}_ckpt{iteration:04d}.pt")
 
+def _unwrap(net: "nn.Module") -> "HexAlphaNet":
+    """Return the underlying HexAlphaNet, unwrapping torch.compile if present."""
+    return getattr(net, "_orig_mod", net)
+
 def save(net: HexAlphaNet, size: int) -> None:
     path = _model_path(size)
-    torch.save({"size": size, "state_dict": net.state_dict()}, path)
+    m = _unwrap(net)
+    torch.save({"size": size, "channels": m.channels, "blocks": m.blocks,
+                "state_dict": net.state_dict()}, path)
     print(f"[AlphaZero] Saved → {path}")
 
 def _save_checkpoint(net: HexAlphaNet, size: int, iteration: int) -> None:
     path = _checkpoint_path(size, iteration)
-    torch.save({"size": size, "iteration": iteration, "state_dict": net.state_dict()}, path)
+    m = _unwrap(net)
+    torch.save({"size": size, "iteration": iteration,
+                "channels": m.channels, "blocks": m.blocks,
+                "state_dict": net.state_dict()}, path)
     print(f"[AlphaZero] Checkpoint → {path}")
 
 def _torch_load(path: str, device: torch.device) -> dict:
@@ -945,11 +992,15 @@ def load(size: int) -> bool:
     if not os.path.exists(path):
         return False
     device = _get_device()
-    net = HexAlphaNet(size).to(device)
-    net.load_state_dict(_torch_load(path, device)["state_dict"])
+    ckpt = _torch_load(path, device)
+    channels = ckpt.get("channels"); blocks = ckpt.get("blocks")
+    if channels is None or blocks is None:        # older file: infer from size
+        channels, blocks = _scaled_net(size)
+    net = HexAlphaNet(size, channels=channels, blocks=blocks).to(device)
+    net.load_state_dict(ckpt["state_dict"])
     net.eval()
     _network, _trained_size = net, size
-    print(f"[AlphaZero] Loaded ← {path}")
+    print(f"[AlphaZero] Loaded ← {path}  ({channels}ch×{blocks}b)")
     return True
 
 
@@ -965,11 +1016,15 @@ def load_checkpoint(size: int, iteration: int) -> bool:
         print(f"[AlphaZero] Checkpoint not found: {path}")
         return False
     device = _get_device()
-    net = HexAlphaNet(size).to(device)
-    net.load_state_dict(_torch_load(path, device)["state_dict"])
+    ckpt = _torch_load(path, device)
+    channels = ckpt.get("channels"); blocks = ckpt.get("blocks")
+    if channels is None or blocks is None:        # older file: infer from size
+        channels, blocks = _scaled_net(size)
+    net = HexAlphaNet(size, channels=channels, blocks=blocks).to(device)
+    net.load_state_dict(ckpt["state_dict"])
     net.eval()
     _network, _trained_size = net, size
-    print(f"[AlphaZero] Loaded checkpoint ← {path}")
+    print(f"[AlphaZero] Loaded checkpoint ← {path}  ({channels}ch×{blocks}b)")
     return True
 
 
@@ -1011,9 +1066,9 @@ _trained_size: int                = 0
 
 
 def train(size: int = 7, iterations: int = N_ITERATIONS,
-          sims: int = N_SIMULATIONS, parallel: int = PARALLEL_SIMS,
+          sims: "int | None" = None, parallel: int = PARALLEL_SIMS,
           resume_from: int = 0,
-          channels: int = NET_CHANNELS, blocks: int = NET_BLOCKS,
+          channels: "int | None" = None, blocks: "int | None" = None,
           n_workers: int = 1) -> dict:
     """
     Train via AlphaZero self-play.
@@ -1035,14 +1090,39 @@ def train(size: int = 7, iterations: int = N_ITERATIONS,
     """
     global _network, _trained_size
 
-    device = _get_device()
-    net    = HexAlphaNet(size, channels=channels, blocks=blocks).to(device)
+    # Size-based defaults: scale the simulation budget and self-play volume with
+    # the board so larger boards actually search deep enough to learn. Explicit
+    # sims=... from the caller is always respected.
+    if sims is None:
+        sims = _scaled_sims(size)
+    _sc, _sb = _scaled_net(size)
+    if channels is None:
+        channels = _sc
+    if blocks is None:
+        blocks = _sb
+    games_per_iter = _scaled_games_per_iter(size)
+    print(f"[AlphaZero] Auto-scaled for {size}×{size}: "
+          f"sims/move={sims}  games/iter={games_per_iter}  net={channels}ch×{blocks}b  "
+          f"(inference sims={_scaled_inference_sims(size)})")
 
+    device = _get_device()
+
+    resume_ckpt = None
     if resume_from > 0:
         ckpt_path = _checkpoint_path(size, resume_from)
         if not os.path.exists(ckpt_path):
             raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
-        net.load_state_dict(_torch_load(ckpt_path, device)["state_dict"])
+        resume_ckpt = _torch_load(ckpt_path, device)
+        # Match the net to whatever the checkpoint was trained with.
+        if resume_ckpt.get("channels") is not None:
+            channels = resume_ckpt["channels"]
+        if resume_ckpt.get("blocks") is not None:
+            blocks = resume_ckpt["blocks"]
+
+    net = HexAlphaNet(size, channels=channels, blocks=blocks).to(device)
+
+    if resume_ckpt is not None:
+        net.load_state_dict(resume_ckpt["state_dict"])
         print(f"[AlphaZero] Resuming from checkpoint {ckpt_path} (iter {resume_from})")
 
     if USE_TORCH_COMPILE:
@@ -1061,7 +1141,7 @@ def train(size: int = 7, iterations: int = N_ITERATIONS,
     # Scale replay buffer and batch size with board complexity so the buffer
     # holds at least 70 iterations of self-play data regardless of board size.
     avg_moves     = size * size // 2            # rough moves/game estimate
-    positions_per_iter = GAMES_PER_ITER * avg_moves
+    positions_per_iter = games_per_iter * avg_moves
     replay_size   = max(REPLAY_SIZE, positions_per_iter * 70)
     batch_size    = min(512, max(BATCH_SIZE, positions_per_iter // 4))
     buf    = _ReplayBuffer(replay_size)
@@ -1086,10 +1166,10 @@ def train(size: int = 7, iterations: int = N_ITERATIONS,
 
     start_it    = resume_from
     remaining   = iterations - start_it
-    total_games = remaining * GAMES_PER_ITER * max(1, n_workers)
+    total_games = remaining * games_per_iter * max(1, n_workers)
     workers_str = f"  workers={n_workers}" if n_workers > 1 else ""
     print(f"[AlphaZero] Training iters {start_it+1}–{iterations} "
-          f"({remaining:,} iters × {GAMES_PER_ITER * max(1,n_workers)} games = {total_games:,} games) "
+          f"({remaining:,} iters × {games_per_iter * max(1,n_workers)} games = {total_games:,} games) "
           f"on {size}×{size}  (sims/move={sims}  parallel={parallel}"
           f"  rounds/move≈{sims//max(1,parallel)}{workers_str}) …")
     print(f"{'iter':>6}  {'buf':>6}  {'π loss':>8}  {'v loss':>8}  {'win% vs rand':>12}")
@@ -1123,7 +1203,7 @@ def train(size: int = 7, iterations: int = N_ITERATIONS,
         # ── single-process training loop ──────────────────────────────────────
         for it in range(start_it, iterations):
             samples = _self_play_games_batched(
-                net, size, GAMES_PER_ITER, sims, device, parallel=parallel)
+                net, size, games_per_iter, sims, device, parallel=parallel)
             buf.push(_maybe_augment(samples))
             pi_l, vf_l = _do_train_step()
             if pi_l is not None:
@@ -1156,7 +1236,7 @@ def train(size: int = 7, iterations: int = N_ITERATIONS,
             del probe_net
         rounds      = max(1, sims // parallel)
         moves       = size * size // 2                    # rough
-        sec_per_iter = t_fwd * rounds * moves * GAMES_PER_ITER
+        sec_per_iter = t_fwd * rounds * moves * games_per_iter
         if sec_per_iter > 600:                            # >10 min → warn
             print(f"[AlphaZero] ⚠ Estimated CPU self-play: ~{sec_per_iter/60:.0f} min/iter "
                   f"per worker — net is too big for CPU inference at this board+sims.")
@@ -1176,7 +1256,7 @@ def train(size: int = 7, iterations: int = N_ITERATIONS,
             ctx.Process(
                 target=_worker_fn, daemon=True,
                 args=(rank, weight_qs[rank], sample_q,
-                      size, sims, parallel, GAMES_PER_ITER, channels, blocks)
+                      size, sims, parallel, games_per_iter, channels, blocks)
             )
             for rank in range(n_workers)
         ]
@@ -1289,7 +1369,7 @@ def _build_game(board) -> engine.hexPosition:
 def agent(board, action_set):
     """
     AlphaZero agent.  Loads a saved model if available, trains from scratch otherwise.
-    Uses INFERENCE_SIMS MCTS simulations per move (more than during training)
+    Uses a size-scaled MCTS simulation budget per move (more than during training)
     so the agent thinks harder when playing against a human.
     """
     global _network, _trained_size
@@ -1309,6 +1389,6 @@ def agent(board, action_set):
     game   = _build_game(board)
     device = _get_device()
 
-    visits = _run_mcts(game, _network, INFERENCE_SIMS, device, dirichlet=False)
+    visits = _run_mcts(game, _network, _scaled_inference_sims(size), device, dirichlet=False)
     best   = max(visits, key=visits.get)
     return best
