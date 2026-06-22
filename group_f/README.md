@@ -15,3 +15,8 @@ The directory contains only the model for the board size 5, 7 and 9
 due to the maximum upload in Moodle.
 Please download the completed models at 
 https://github.com/philippchn/RL-Hexgame/raw/refs/heads/master/group_f.tgz
+
+## Notes
+The MCTS code is written in C++, therefore please compile it before running the test as follow:
+    pip install pybind11
+    python setup_mcts.py build_ext --inplace 
