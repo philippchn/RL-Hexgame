@@ -1,0 +1,99 @@
+Method : alphazero
+Board  : 5×5
+Iters  : 150  sims/move=auto (size-based)  parallel=16
+
+[AlphaZero] C++ MCTS extension loaded ✓
+[AlphaZero] Auto-scaled for 5×5: sims/move=100  games/iter=16  net=128ch×5b  (inference sims=200)
+[AlphaZero] device: cuda
+[AlphaZero] Network: 128ch × 5 blocks = 1.49M params
+[AlphaZero] Replay buffer: 20,000  batch: 128
+[AlphaZero] WARNING: parallel=16 vs sims=100 gives only 6 MCTS round(s) per move — tree search too shallow.
+[AlphaZero]   → Raise --sims to at least 112  (or lower --parallel to 14).
+[AlphaZero] Training iters 1–150 (150 iters × 16 games = 2,400 games) on 5×5  (sims/move=100  parallel=16  rounds/move≈6) …
+    time   elapsed    iter     buf    π loss    v loss  win% vs rand
+------------------------------------------------------------------------
+09:09:20  00:00:14      20   9,710    2.7492    0.7032   85.0%  █████████████████░░░  (13%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_5x5_ckpt0020.pt
+09:09:33  00:00:26      40  18,684    2.6808    0.7037  100.0%  ████████████████████  (27%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_5x5_ckpt0040.pt
+09:09:46  00:00:39      60  20,000    2.5458    0.6688  100.0%  ████████████████████  (40%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_5x5_ckpt0060.pt
+09:09:59  00:00:52      80  20,000    2.3505    0.6012  100.0%  ████████████████████  (53%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_5x5_ckpt0080.pt
+09:10:12  00:01:05     100  20,000    2.1613    0.5330  100.0%  ████████████████████  (67%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_5x5_ckpt0100.pt
+09:10:25  00:01:18     120  20,000    2.0227    0.4692  100.0%  ████████████████████  (80%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_5x5_ckpt0120.pt
+09:10:38  00:01:31     140  20,000    1.9666    0.4107  100.0%  ████████████████████  (93%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_5x5_ckpt0140.pt
+[AlphaZero] Saved → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_5x5.pt
+Method : alphazero
+Board  : 7×7
+Iters  : 200  sims/move=auto (size-based)  parallel=16
+
+[AlphaZero] C++ MCTS extension loaded ✓
+[AlphaZero] Auto-scaled for 7×7: sims/move=150  games/iter=16  net=128ch×5b  (inference sims=300)
+[AlphaZero] device: cuda
+[AlphaZero] Network: 128ch × 5 blocks = 1.50M params
+[AlphaZero] Replay buffer: 26,880  batch: 128
+[AlphaZero] Training iters 1–200 (200 iters × 16 games = 3,200 games) on 7×7  (sims/move=150  parallel=16  rounds/move≈9) …
+    time   elapsed    iter     buf    π loss    v loss  win% vs rand
+------------------------------------------------------------------------
+09:11:42  00:00:55      20  21,022    3.3536    0.6758   90.0%  ██████████████████░░  (10%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_7x7_ckpt0020.pt
+09:12:39  00:01:52      40  26,880    3.2721    0.8032   85.0%  █████████████████░░░  (20%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_7x7_ckpt0040.pt
+09:13:32  00:02:45      60  26,880    3.2553    0.8246   90.0%  ██████████████████░░  (30%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_7x7_ckpt0060.pt
+09:14:25  00:03:38      80  26,880    3.2567    0.7968   90.0%  ██████████████████░░  (40%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_7x7_ckpt0080.pt
+09:15:18  00:04:31     100  26,880    3.2203    0.7832   90.0%  ██████████████████░░  (50%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_7x7_ckpt0100.pt
+09:16:10  00:05:23     120  26,880    3.1819    0.7575   95.0%  ███████████████████░  (60%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_7x7_ckpt0120.pt
+09:17:01  00:06:14     140  26,880    3.0712    0.6996  100.0%  ████████████████████  (70%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_7x7_ckpt0140.pt
+09:17:52  00:07:05     160  26,880    2.9527    0.6605   95.0%  ███████████████████░  (80%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_7x7_ckpt0160.pt
+09:18:43  00:07:56     180  26,880    2.8208    0.6551  100.0%  ████████████████████  (90%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_7x7_ckpt0180.pt
+09:19:33  00:08:46     200  26,880    2.7379    0.5724  100.0%  ████████████████████  (100%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_7x7_ckpt0200.pt
+[AlphaZero] Saved → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_7x7.pt
+Method : alphazero
+Board  : 9×9
+Iters  : 250  sims/move=auto (size-based)  parallel=16
+
+[AlphaZero] C++ MCTS extension loaded ✓
+[AlphaZero] Auto-scaled for 9×9: sims/move=300  games/iter=16  net=128ch×5b  (inference sims=600)
+[AlphaZero] device: cuda
+[AlphaZero] Network: 128ch × 5 blocks = 1.51M params
+[AlphaZero] Replay buffer: 44,800  batch: 160
+[AlphaZero] Training iters 1–250 (250 iters × 16 games = 4,000 games) on 9×9  (sims/move=300  parallel=16  rounds/move≈18) …
+    time   elapsed    iter     buf    π loss    v loss  win% vs rand
+------------------------------------------------------------------------
+09:23:52  00:04:16      20  35,992    3.8159    0.5845   80.0%  ████████████████░░░░  (8%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_9x9_ckpt0020.pt
+09:28:30  00:08:54      40  44,800    3.5495    0.6935   90.0%  ██████████████████░░  (16%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_9x9_ckpt0040.pt
+09:32:59  00:13:23      60  44,800    3.3662    0.6934  100.0%  ████████████████████  (24%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_9x9_ckpt0060.pt
+09:37:39  00:18:03      80  44,800    3.3372    0.6947   90.0%  ██████████████████░░  (32%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_9x9_ckpt0080.pt
+09:42:07  00:22:31     100  44,800    3.3553    0.6750   90.0%  ██████████████████░░  (40%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_9x9_ckpt0100.pt
+09:46:21  00:26:45     120  44,800    3.3893    0.6596   95.0%  ███████████████████░  (48%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_9x9_ckpt0120.pt
+09:50:36  00:31:00     140  44,800    3.4511    0.6658   95.0%  ███████████████████░  (56%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_9x9_ckpt0140.pt
+09:54:41  00:35:05     160  44,800    3.5117    0.6591   95.0%  ███████████████████░  (64%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_9x9_ckpt0160.pt
+09:58:44  00:39:08     180  44,800    3.5073    0.6297   95.0%  ███████████████████░  (72%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_9x9_ckpt0180.pt
+10:02:52  00:43:16     200  44,800    3.4354    0.6419  100.0%  ████████████████████  (80%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_9x9_ckpt0200.pt
+10:06:54  00:47:18     220  44,800    3.3333    0.6704  100.0%  ████████████████████  (88%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_9x9_ckpt0220.pt
+10:10:44  00:51:08     240  44,800    3.2698    0.6700  100.0%  ████████████████████  (96%)
+[AlphaZero] Checkpoint → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_9x9_ckpt0240.pt
+[AlphaZero] Saved → /home/cahya/Work/MachineLearning/hexgame-test/submission/alphazero_9x9.pt
